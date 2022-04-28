@@ -1,9 +1,75 @@
-const PORT = process.env.PORT || 8000const express = require('express')const cheerio = require('cheerio')const axios = require('axios')
-const app = express()
-const articales = []
-app.get('/', (req,res)=> { res.json("Welcome to my Climate crisis API!")})
-app.get('/news', (req,res)=> { axios.get('https://www.theguardian.com/environment/climate-crisis') .then((response)=>{
- const html = response.data const $ = cheerio.load(html) $('a:contains("climate")', html).each(function(){ const title = $(this).text() const url = $(this).attr('href') articales.push({title,url}) })
- res.json(articales)
- }).catch((err)=>console.log(err))})
-app.listen(PORT, () => console.log("Server runing on PORT: "+PORT))
+// Import of net module
+const net = require("net");
+const server = net.createServer();
+
+server.on("connection", (clientToProxySocket) => {
+    console.log("Client connected to proxy");
+    clientToProxySocket.once("data", (data) => {
+        let isTLSConnection = data.toString().indexOf("CONNECT") !== -1;
+
+        let serverPort = 80;
+        let serverAddress;
+        console.log(data.toString());
+        if (isTLSConnection) {
+            serverPort = 443;
+            serverAddress = data
+                .toString()
+                .split("CONNECT")[1]
+                .split(" ")[1]
+                .split(":")[0];
+        } else {
+            serverAddress = data.toString().split("Host: ")[1].split("\r\n")[0];
+        }
+        console.log(serverAddress);
+
+        // Creating a connection from proxy to destination server
+        let proxyToServerSocket = net.createConnection(
+            {
+                host: serverAddress,
+                port: serverPort,
+            },
+            () => {
+                console.log("Proxy to server set up");
+            }
+        );
+
+
+        if (isTLSConnection) {
+            clientToProxySocket.write("HTTP/1.1 200 OK\r\n\r\n");
+        } else {
+            proxyToServerSocket.write(data);
+        }
+
+        clientToProxySocket.pipe(proxyToServerSocket);
+        proxyToServerSocket.pipe(clientToProxySocket);
+
+        proxyToServerSocket.on("error", (err) => {
+            console.log("Proxy to server error");
+            console.log(err);
+        });
+
+        clientToProxySocket.on("error", (err) => {
+            console.log("Client to proxy error");
+            console.log(err)
+        });
+    });
+});
+
+server.on("error", (err) => {
+    console.log("Some internal server error occurred");
+    console.log(err);
+});
+
+server.on("close", () => {
+    console.log("Client disconnected");
+});
+
+server.listen(
+    {
+        host: "0.0.0.0",
+        port: 8080
+    },
+    () => {
+        console.log("Server listening on 192.168.43.238:8080");
+    }
+);
